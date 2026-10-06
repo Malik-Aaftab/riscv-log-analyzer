@@ -96,6 +96,20 @@ parse_args() {
     [ -r "$LOG_FILE" ] || die "log file is not readable: $LOG_FILE"
 }
 
+# extract_results <log> <out>
+# Reduce every "TEST PASS/FAIL/SKIP" line to:  STATUS name [seconds]
+# START and ERROR lines are ignored on purpose. A SKIP line has no time, so it
+# ends up with only two fields.
+extract_results() {
+    local log="$1" out="$2"
+    # tr strips Windows line endings. The trailing '|| true' is needed because
+    # grep exits 1 when nothing matches, and pipefail would abort the script.
+    tr -d '\r' < "$log" \
+        | grep -E 'TEST (PASS|FAIL|SKIP):' \
+        | sed -E 's/^\[[^]]*\] TEST (PASS|FAIL|SKIP): ([^ ]+)( \(([0-9]+(\.[0-9]+)?)s\))?.*$/\1 \2 \4/' \
+        > "$out" || true
+}
+
 main() {
     parse_args "$@"
 
@@ -104,9 +118,10 @@ main() {
     RESULTS_FILE="$TMP_DIR/results.txt"
 
     log_verbose "Analyzing: $LOG_FILE"
-    log_verbose "Parsing is not implemented yet"
-    echo "$SCRIPT_NAME: '$LOG_FILE' accepted (analysis not implemented yet)"
-    return 0
+    extract_results "$LOG_FILE" "$RESULTS_FILE"
+    [ -s "$RESULTS_FILE" ] || die "no TEST PASS/FAIL/SKIP entries found in '$LOG_FILE'"
+    log_verbose "Extracted $(wc -l < "$RESULTS_FILE") test results"
+    cat "$RESULTS_FILE"
 }
 
 main "$@"
