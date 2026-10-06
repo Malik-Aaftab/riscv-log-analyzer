@@ -1,0 +1,9 @@
+output/*
+!output/.gitkeep
+.vscode/
+.idea/
+.swp/
+~
+#OS files
+.DS_Store
+Thumbs.db
