@@ -147,4 +147,4 @@ git log --oneline --graph --all
 
 ## Author
 
-YOUR NAME - MEDS Lab, Department of Electrical Engineering, UET Lahore.
+Aftab - MEDS Lab, Department of Electrical Engineering, UET Lahore.
