@@ -24,6 +24,9 @@ OUTPUT=""
 LOG_FILE=""
 TMP_DIR=""
 COLOR=0
+COMPARE_LOG=""
+REGRESSIONS=""
+FIXES=""
 
 usage() {
     cat <<EOF
@@ -39,6 +42,7 @@ Options:
   --format <fmt>      Output format: text or csv (default: text)
   --output <path>     Write the report to <path> (default: stdout)
   --color             Colorize PASS (green) and FAIL (red) in text output
+  --compare <old.log> Compare against an older log and list regressions
   -h, --help          Show this help and exit
 
 Exit codes:
@@ -99,6 +103,11 @@ parse_args() {
                 COLOR=1
                 shift
                 ;;
+            --compare)
+                [ $# -ge 2 ] || die "--compare requires a log file path"
+                COMPARE_LOG="$2"
+                shift 2
+                ;;
             -*)
                 die "unknown option: $1"
                 ;;
@@ -118,6 +127,10 @@ parse_args() {
         text|csv) ;;
         *) die "invalid format '$FORMAT' (expected: text or csv)" ;;
     esac
+    if [ -n "$COMPARE_LOG" ]; then
+        [ -r "$COMPARE_LOG" ] || die "cannot read comparison log: $COMPARE_LOG"
+        [ "$FORMAT" = "text" ] || die "--compare is only supported with --format text"
+    fi
 }
 
 # extract_results <log> <out>
@@ -187,6 +200,33 @@ paint() {
     printf '\033[%sm%s\033[0m' "$code" "$2"
 }
 
+# find_regressions <old_results> <new_results> - tests that went PASS -> FAIL
+# NOTE: the 'NR == FNR' idiom breaks if the first file is empty, so main()
+# refuses to compare against a log without results.
+find_regressions() {
+    awk 'NR == FNR { old[$2] = $1; next }
+         ($2 in old) && old[$2] == "PASS" && $1 == "FAIL" { print $2 }' "$1" "$2"
+}
+
+# find_fixes <old_results> <new_results> - tests that went FAIL -> PASS
+find_fixes() {
+    awk 'NR == FNR { old[$2] = $1; next }
+         ($2 in old) && old[$2] == "FAIL" && $1 == "PASS" { print $2 }' "$1" "$2"
+}
+
+# print_list <title> <newline-separated items>
+print_list() {
+    local title="$1" items="$2" item
+    echo "$title"
+    if [ -z "$items" ]; then
+        echo "  none"
+    else
+        while IFS= read -r item; do
+            echo "  - $item"
+        done <<< "$items"
+    fi
+}
+
 # render_text - the human-readable report (matches the assignment's example)
 render_text() {
     local pass_pct fail_pct skip_pct
@@ -235,6 +275,13 @@ render_text() {
     fi
     echo
 
+    if [ -n "$COMPARE_LOG" ]; then
+        echo "--- Comparison with $COMPARE_LOG ---"
+        print_list "Regressions (PASS -> FAIL):" "$REGRESSIONS"
+        print_list "Fixed (FAIL -> PASS):" "$FIXES"
+        echo
+    fi
+
     if [ "$FAIL" -gt 0 ]; then
         echo "--- Verdict: $(paint red FAIL) ---"
     else
@@ -279,6 +326,13 @@ main() {
     EXIT_CODE=0
     if [ "$FAIL" -gt 0 ]; then
         EXIT_CODE=1
+    fi
+    if [ -n "$COMPARE_LOG" ]; then
+        local old_results="$TMP_DIR/old_results.txt"
+        extract_results "$COMPARE_LOG" "$old_results"
+        [ -s "$old_results" ] || die "no test results found in comparison log '$COMPARE_LOG'"
+        REGRESSIONS=$(find_regressions "$old_results" "$RESULTS_FILE")
+        FIXES=$(find_fixes "$old_results" "$RESULTS_FILE")
     fi
 
     if [ -n "$OUTPUT" ]; then
