@@ -308,6 +308,19 @@ emit() {
     esac
 }
 
+# check_log_summary - warn if the log's own SUMMARY line disagrees with our count
+check_log_summary() {
+    local line reported
+    line=$(tr -d '\r' < "$LOG_FILE" | grep 'SUMMARY:' | tail -n 1 || true)
+    [ -n "$line" ] || return 0
+    reported=$(printf '%s' "$line" | sed -E 's/.*SUMMARY: ([0-9]+) tests.*/\1/')
+    # If the line has an unexpected shape, sed leaves it unchanged: ignore it
+    [[ "$reported" =~ ^[0-9]+$ ]] || return 0
+    if [ "$reported" -ne "$TOTAL" ]; then
+        echo "Warning: log SUMMARY reports $reported tests but $TOTAL results were parsed" >&2
+    fi
+}
+
 main() {
     parse_args "$@"
 
@@ -327,6 +340,7 @@ main() {
     if [ "$FAIL" -gt 0 ]; then
         EXIT_CODE=1
     fi
+    check_log_summary
     if [ -n "$COMPARE_LOG" ]; then
         local old_results="$TMP_DIR/old_results.txt"
         extract_results "$COMPARE_LOG" "$old_results"
