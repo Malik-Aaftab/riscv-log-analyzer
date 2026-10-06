@@ -9,7 +9,7 @@
 #   1  at least one test failed
 #   2  usage or input error (bad arguments, unreadable file, no results found)
 #
-# Author: YOUR NAME
+# Author: Aftab
 # MEDS Lab Module 1 - Grand Assignment
 
 set -euo pipefail
