@@ -21,6 +21,7 @@ SCRIPT_NAME="$(basename "$0")"
 VERBOSE=0
 LOG_FILE=""
 TMP_DIR=""
+COLOR=0
 
 usage() {
     cat <<EOF
@@ -33,6 +34,7 @@ Arguments:
 
 Options:
   -v, --verbose       Print extra diagnostics (per-test results, progress)
+  --color             Colorize PASS (green) and FAIL (red) in text output
   -h, --help          Show this help and exit
 
 Exit codes:
@@ -77,6 +79,10 @@ parse_args() {
                 ;;
             -v|--verbose)
                 VERBOSE=1
+                shift
+                ;;
+            --color)
+                COLOR=1
                 shift
                 ;;
             -*)
@@ -147,6 +153,22 @@ percent() {
     awk -v n="$1" -v t="$2" 'BEGIN { if (t == 0) printf "0.0"; else printf "%.1f", n * 100 / t }'
 }
 
+# paint <green|red|yellow> <text> - wrap text in ANSI colour codes when --color is set
+paint() {
+    if [ "$COLOR" -ne 1 ]; then
+        printf '%s' "$2"
+        return 0
+    fi
+    local code
+    case "$1" in
+        green)  code=32 ;;
+        red)    code=31 ;;
+        yellow) code=33 ;;
+        *)      code=0 ;;
+    esac
+    printf '\033[%sm%s\033[0m' "$code" "$2"
+}
+
 # render_text - the human-readable report (matches the assignment's example)
 render_text() {
     local pass_pct fail_pct skip_pct
@@ -169,7 +191,7 @@ render_text() {
         echo "--- Failed Tests ---"
         local i=1 name
         while IFS= read -r name; do
-            printf '  %d. %s\n' "$i" "$name"
+            printf '  %d. %s\n' "$i" "$(paint red "$name")"
             i=$((i + 1))
         done <<< "$FAILED_TESTS"
         echo
@@ -177,7 +199,11 @@ render_text() {
 
     if [ "$VERBOSE" -eq 1 ]; then
         echo "--- Per-Test Results ---"
-        awk '{ printf "  %-6s %-16s %s\n", $1, $2, (NF >= 3 ? $3 "s" : "-") }' "$RESULTS_FILE"
+        awk -v c="$COLOR" '{
+            code = ($1 == "PASS") ? 32 : (($1 == "FAIL") ? 31 : 33)
+            st = (c == 1) ? sprintf("\033[%dm%-6s\033[0m", code, $1) : sprintf("%-6s", $1)
+            printf "  %s %-16s %s\n", st, $2, (NF >= 3 ? $3 "s" : "-")
+        }' "$RESULTS_FILE"
         echo
     fi
 
@@ -192,9 +218,9 @@ render_text() {
     echo
 
     if [ "$FAIL" -gt 0 ]; then
-        echo "--- Verdict: FAIL ---"
+        echo "--- Verdict: $(paint red FAIL) ---"
     else
-        echo "--- Verdict: PASS ---"
+        echo "--- Verdict: $(paint green PASS) ---"
     fi
     echo "Exit code: $EXIT_CODE"
 }
