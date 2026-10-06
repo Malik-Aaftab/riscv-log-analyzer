@@ -1,9 +1,11 @@
+# Generated reports (the folder itself is kept via output/.gitkeep)
 output/*
 !output/.gitkeep
+
+# Editor files
 .vscode/
 .idea/
-.swp/
-~
-#OS files
+*.swp
+*~
 .DS_Store
 Thumbs.db
