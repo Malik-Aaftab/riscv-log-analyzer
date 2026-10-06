@@ -19,6 +19,8 @@ SCRIPT_NAME="$(basename "$0")"
 
 # ---------- Defaults ----------
 VERBOSE=0
+FORMAT="text"
+OUTPUT=""
 LOG_FILE=""
 TMP_DIR=""
 
@@ -33,6 +35,8 @@ Arguments:
 
 Options:
   -v, --verbose       Print extra diagnostics (per-test results, progress)
+  --format <fmt>      Output format: text or csv (default: text)
+  --output <path>     Write the report to <path> (default: stdout)
   -h, --help          Show this help and exit
 
 Exit codes:
@@ -79,6 +83,16 @@ parse_args() {
                 VERBOSE=1
                 shift
                 ;;
+            --format)
+                [ $# -ge 2 ] || die "--format requires an argument (text|csv)"
+                FORMAT="$2"
+                shift 2
+                ;;
+            --output)
+                [ $# -ge 2 ] || die "--output requires a file path"
+                OUTPUT="$2"
+                shift 2
+                ;;
             -*)
                 die "unknown option: $1"
                 ;;
@@ -94,6 +108,10 @@ parse_args() {
     [ -e "$LOG_FILE" ] || die "log file not found: $LOG_FILE"
     [ -f "$LOG_FILE" ] || die "not a regular file: $LOG_FILE"
     [ -r "$LOG_FILE" ] || die "log file is not readable: $LOG_FILE"
+    case "$FORMAT" in
+        text|csv) ;;
+        *) die "invalid format '$FORMAT' (expected: text or csv)" ;;
+    esac
 }
 
 # extract_results <log> <out>
@@ -199,9 +217,22 @@ render_text() {
     echo "Exit code: $EXIT_CODE"
 }
 
+# render_csv - a header row plus one summary row; failing tests are joined with ';'
+render_csv() {
+    local failed_joined
+    failed_joined=$(printf '%s' "$FAILED_TESTS" | tr '\n' ';')
+    echo "log_file,total,passed,failed,skipped,pass_rate,min_time,max_time,avg_time,failed_tests"
+    printf '%s,%d,%d,%d,%d,%s,%s,%s,%s,%s\n' \
+        "$LOG_FILE" "$TOTAL" "$PASS" "$FAIL" "$SKIP" \
+        "$(percent "$PASS" "$TOTAL")" "$MIN_T" "$MAX_T" "$AVG_T" "$failed_joined"
+}
+
 # emit - print the report in the selected format
 emit() {
-    render_text
+    case "$FORMAT" in
+        csv) render_csv ;;
+        *)   render_text ;;
+    esac
 }
 
 main() {
@@ -224,7 +255,13 @@ main() {
         EXIT_CODE=1
     fi
 
-    emit
+    if [ -n "$OUTPUT" ]; then
+        mkdir -p "$(dirname "$OUTPUT")"
+        emit > "$OUTPUT"
+        log_verbose "Report written to $OUTPUT"
+    else
+        emit
+    fi
 
     exit "$EXIT_CODE"
 }
